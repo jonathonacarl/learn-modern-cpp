@@ -34,20 +34,20 @@ public:
         bool is_empty = head == tail;
         if (!is_empty)
         {
-            out = m_buffer[tail % Capacity];
+            out = std::move(m_buffer[tail % Capacity]);
             m_tail.store(tail + 1, std::memory_order_release); // Consumer broadcasts the buffer update to the producer.
         }
         return !is_empty;
     }
 
-    // Rule of 0. We're using well-defined STL members, so we need no ctors, dtors, or assignments required.
+    // Rule of 0. We're using well-defined STL members, so we need no ctors, dtors, or assignments defined.
 private:
     std::array<T, Capacity> m_buffer;
     // Keep the two indices on separate cache lines: the producer hammers m_head,
     // the consumer hammers m_tail, and the cross-reads are the only sharing. Without
     // this they'd ping-pong one line via the MESI RFO/invalidate path (false sharing).
-    alignas(64) std::atomic<std::size_t> m_head{0};
-    alignas(64) std::atomic<std::size_t> m_tail{0};
+    alignas(std::hardware_destructive_interference_size) std::atomic<std::size_t> m_head{0};
+    alignas(std::hardware_destructive_interference_size) std::atomic<std::size_t> m_tail{0};
 };
 
 #endif

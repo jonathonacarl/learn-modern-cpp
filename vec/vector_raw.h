@@ -14,37 +14,35 @@ namespace placement
     class Vector
     {
     public:
-        Vector()
-        {
-            m_arr = static_cast<T *>(::operator new(m_capacity * sizeof(T)));
-        }
+        // When capacity is unspecified, we don't need to allocate any raw memory at construction.
+        Vector() = default;
 
         explicit Vector(std::size_t capacity) : m_capacity{capacity}
         {
             m_arr = static_cast<T *>(::operator new(m_capacity * sizeof(T)));
         }
 
-        ~Vector() { cleanup(m_arr, m_size); }
+        ~Vector() { _cleanup(); }
 
-        Vector(const Vector &v) { deep_copy(v); }
+        Vector(const Vector &v) { _deep_copy(v); }
 
         Vector &operator=(const Vector &v)
         {
             if (this == &v)
                 return *this;
-            cleanup(m_arr, m_size);
-            deep_copy(v);
+            _cleanup();
+            _deep_copy(v);
             return *this;
         }
 
-        Vector(Vector &&v) noexcept { steal_and_reset(std::move(v)); }
+        Vector(Vector &&v) noexcept { _steal_and_reset(std::move(v)); }
 
         Vector &operator=(Vector &&v) noexcept
         {
             if (this == &v)
                 return *this;
-            cleanup(m_arr, m_size);
-            steal_and_reset(std::move(v));
+            _cleanup();
+            _steal_and_reset(std::move(v));
             return *this;
         }
 
@@ -55,7 +53,7 @@ namespace placement
         T &emplace_back(Args &&...args)
         {
             if (m_size == m_capacity)
-                grow();
+                _grow();
 
             T *p = new (m_arr + m_size) T(std::forward<Args>(args)...);
             ++m_size;
@@ -93,14 +91,16 @@ namespace placement
         }
 
     private:
-        void cleanup(T *arr, std::size_t size)
+        void _cleanup()
         {
-            for (std::size_t i{}; i < size; ++i)
-                arr[i].~T();
-            ::operator delete(arr);
+            for (std::size_t i{}; i < m_size; ++i)
+            {
+                m_arr[i].~T();
+            }
+            ::operator delete(m_arr);
         }
 
-        void steal_and_reset(Vector &&v)
+        void _steal_and_reset(Vector &&v)
         {
             m_capacity = v.m_capacity;
             m_size = v.m_size;
@@ -111,7 +111,7 @@ namespace placement
             v.m_arr = nullptr;
         }
 
-        void deep_copy(const Vector &v)
+        void _deep_copy(const Vector &v)
         {
             m_arr = static_cast<T *>(::operator new(v.m_capacity * sizeof(T)));
             for (std::size_t i{}; i < v.m_size; ++i)
@@ -120,19 +120,42 @@ namespace placement
             m_size = v.m_size;
         }
 
-        void grow()
+        void _grow()
         {
             T *old_arr = m_arr;
             std::size_t old_size = m_size;
 
-            m_capacity = m_capacity ? m_capacity * 2 : 1;
-            m_size = 0;
-            m_arr = static_cast<T *>(::operator new(m_capacity * sizeof(T)));
-            for (std::size_t i{}; i < old_size; ++i)
-                new (m_arr + i) T(std::move(old_arr[i])); // our move constructor is noexcept
+            std::size_t new_capacity = m_capacity ? m_capacity * 2 : 1;
+            T *new_arr = static_cast<T *>(::operator new(new_capacity * sizeof(T)));
 
+            std::size_t i{};
+            try
+            {
+                for (; i < old_size; ++i)
+                {
+                    new (new_arr + i) T(std::move_if_noexcept(old_arr[i])); // our move constructor is noexcept
+                }
+            }
+            catch (...)
+            {
+                for (std::size_t j{}; j < i; ++j)
+                {
+                    new_arr[j].~T();
+                }
+                ::operator delete(new_arr);
+                throw;
+            }
+
+            // Allocation and construction succeeded.
             m_size = old_size;
-            cleanup(old_arr, old_size);
+            m_capacity = new_capacity;
+            m_arr = new_arr;
+
+            for (i = 0; i < old_size; ++i)
+            {
+                old_arr[i].~T();
+            }
+            ::operator delete(old_arr);
         }
 
         std::size_t m_capacity{};

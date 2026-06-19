@@ -115,10 +115,10 @@ namespace alloc
         void _cleanup()
         {
             for (std::size_t i{}; i < m_size; ++i)
+            {
                 AT::destroy(m_alloc, &m_data[i]);
+            }
             AT::deallocate(m_alloc, m_data, m_capacity);
-            m_capacity = 0;
-            m_size = 0;
         }
 
         void _deep_copy(const Vector &v)
@@ -147,15 +147,39 @@ namespace alloc
             std::size_t old_capacity = m_capacity;
             std::size_t old_size = m_size;
 
-            m_capacity = m_capacity ? old_capacity * 2 : 1;
-            m_data = AT::allocate(m_alloc, m_capacity);
-            for (std::size_t i{}; i < old_size; ++i)
+            std::size_t new_capacity = m_capacity ? old_capacity * 2 : 1;
+            T *new_data = AT::allocate(m_alloc, new_capacity);
+            std::size_t i{};
+            try
             {
-                AT::construct(m_alloc, &m_data[i], std::move(temp[i]));
+                for (; i < old_size; ++i)
+                {
+                    // Call the copy ctor if move is not noexcept; the copy ctor can still throw, however.
+                    AT::construct(m_alloc, &new_data[i], std::move_if_noexcept(temp[i]));
+                }
+            }
+            catch (...)
+            {
+                for (std::size_t j{}; j < i; ++j)
+                {
+                    AT::destroy(m_alloc, &new_data[j]);
+                }
+                AT::deallocate(m_alloc, new_data, new_capacity);
+                throw;
+            }
+
+            // Allocation and construction succeeded.
+            m_size = old_size;
+            m_capacity = new_capacity;
+            m_data = new_data;
+
+            // The choice to separate the construct/destroy calls is deliberate here.
+            // We want to avoid temp being in a partially destroyed state in case we need to rollback from an exception.
+            for (i = 0; i < old_size; ++i)
+            {
                 AT::destroy(m_alloc, &temp[i]);
             }
 
-            m_size = old_size;
             AT::deallocate(m_alloc, temp, old_capacity);
         }
     };

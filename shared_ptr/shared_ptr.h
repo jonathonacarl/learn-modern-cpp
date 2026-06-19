@@ -22,7 +22,19 @@ template <typename T>
 class shared_ptr
 {
 public:
-    explicit shared_ptr(T *p) : m_data{p}, m_control{new ControlBlock} {}
+    // TODO: implement make_shared to allocate m_data and m_control together.
+    explicit shared_ptr(T *p) : m_data{p}, m_control{nullptr}
+    {
+        try
+        {
+            m_control = new ControlBlock;
+        }
+        catch (...)
+        {
+            delete m_data;
+            throw;
+        }
+    }
 
     ~shared_ptr()
     {
