@@ -121,6 +121,49 @@ void run_invariants(const char *impl)
         std::cout << "  6 growth-moves ok (moves=" << Tracked::moves << ")\n";
     }
 
+    // ---- growth with a throwing, non-noexcept move ctor: move_if_noexcept must fall
+    // back to the copy ctor, so the source elements survive untouched ----
+    // (this test fails if move_if_noexcept is changed to move in vector_raw/vector_allocator)
+    {
+        BadMove::copies = 0;
+        BadMove::moves = 0;
+        Vec<BadMove> v(1);
+        for (int i = 0; i < 8; ++i)
+            v.emplace_back(i);
+        CHECK(BadMove::moves == 0);
+        CHECK(BadMove::copies > 0);
+        for (int i = 0; i < 8; ++i)
+            CHECK(v[i].v == i);
+        std::cout << "  6b move_if_noexcept avoids throwing move ok\n";
+    }
+
+    // ---- growth where the fallback copy ctor itself throws: the original elements
+    // must remain untouched (they were never moved) and the vector unchanged ----
+    {
+        BadMove::copies = 0;
+        BadMove::moves = 0;
+        Vec<BadMove> v(4);
+        for (int i = 0; i < 4; ++i)
+            v.emplace_back(i);
+        BadMove::throw_on_copy = true;
+        bool threw = false;
+        try
+        {
+            v.emplace_back(99);
+        }
+        catch (...)
+        {
+            threw = true;
+        }
+        BadMove::throw_on_copy = false;
+        CHECK(threw);
+        CHECK(BadMove::moves == 0);
+        CHECK(v.size() == 4);
+        for (int i = 0; i < 4; ++i)
+            CHECK(v[i].v == i);
+        std::cout << "  6c rollback on copy failure keeps source intact ok\n";
+    }
+
     // ---- empty / zero-capacity edges (the &v[0]-style crash guard) ----
     {
         Vec<Tracked> z(0);

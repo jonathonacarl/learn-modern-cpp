@@ -148,6 +148,8 @@ namespace alloc
             std::size_t old_size = m_size;
 
             std::size_t new_capacity = m_capacity ? old_capacity * 2 : 1;
+            // Invokes ::operator new (malloc) under the hood, so there is no notion of realloc.
+            // A custom allocator would be required here to attempt a realloc, if it was possible in the allocator's existing arena.
             T *new_data = AT::allocate(m_alloc, new_capacity);
             std::size_t i{};
             try
@@ -173,8 +175,7 @@ namespace alloc
             m_capacity = new_capacity;
             m_data = new_data;
 
-            // The choice to separate the construct/destroy calls is deliberate here.
-            // We want to avoid temp being in a partially destroyed state in case we need to rollback from an exception.
+            // C++ Core Guidelines C.64: Destroying a moved-from object is safe: a move leaves the source in a valid, destructible state.
             for (i = 0; i < old_size; ++i)
             {
                 AT::destroy(m_alloc, &temp[i]);

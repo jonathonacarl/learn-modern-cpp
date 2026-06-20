@@ -151,6 +151,7 @@ namespace placement
             m_capacity = new_capacity;
             m_arr = new_arr;
 
+            // C++ Core Guidelines C.64: Destroying a moved-from object is safe: a move leaves the source in a valid, destructible state.
             for (i = 0; i < old_size; ++i)
             {
                 old_arr[i].~T();

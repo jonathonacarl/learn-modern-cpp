@@ -5,6 +5,7 @@
 #include <cstdlib>
 #include <iostream>
 #include <random>
+#include <stdexcept>
 #include <string>
 #include <type_traits>
 #include <utility>
@@ -49,6 +50,41 @@ struct Tracked
     }
     ~Tracked() { --alive; }
     bool operator==(const Tracked &o) const { return v == o.v; }
+};
+
+// Move ctor/assignment are not noexcept, corrupt the source, then throw. Used to confirm
+// move_if_noexcept picks the copy ctor instead of ever invoking either one.
+struct BadMove
+{
+    static inline int copies = 0;
+    static inline int moves = 0;
+    static inline bool throw_on_copy = false;
+    int v;
+    BadMove(int x = 0) : v(x) {}
+    BadMove(const BadMove &o) : v(o.v)
+    {
+        ++copies;
+        if (throw_on_copy)
+            throw std::runtime_error("BadMove copy ctor failed");
+    }
+    BadMove(BadMove &&o) // deliberately not noexcept
+    {
+        o.v = -1;
+        ++moves;
+        throw std::runtime_error("BadMove move ctor must never be selected");
+    }
+    BadMove &operator=(const BadMove &o)
+    {
+        v = o.v;
+        return *this;
+    }
+    BadMove &operator=(BadMove &&o) // deliberately not noexcept
+    {
+        o.v = -1;
+        ++moves;
+        throw std::runtime_error("BadMove move assignment must never be selected");
+    }
+    bool operator==(const BadMove &o) const { return v == o.v; }
 };
 
 // Pull a comparable scalar out of an element so the oracle can compare value-by-value.
